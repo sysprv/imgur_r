@@ -27,8 +27,7 @@ import logging
 import re
 import sys
 import io
-if sys.platform == 'win32':
-    import winsound
+from contextlib import closing
 
 
 class RegExps:
@@ -148,43 +147,51 @@ def insert(conn_db, img, complete_uri, final_filename, etag):
     cur.close()
 
 
-def handle_page(conn_i, conn_db, pg):
-    for img in pg['gallery']:
-        # print(img['title'], img['permalink'], img['hash'], img['ext'])
-        has = already_downloaded(conn_db, img['hash'])
-        if has > 0:
-            logging.info('Image with hash ' + img['hash'] + ' has already been downloaded')
-            continue
+def handle_image(conn_db, conn_i, img):
+    has = already_downloaded(conn_db, img['hash'])
+    if has > 0:
+        logging.info('Image with hash ' + img['hash'] + ' has already been downloaded')
+        return 1
 
-        direct_uri_path = '/' + img['hash'] + img['ext']
-        assert RegExps.imgur_image_uri_path.match(direct_uri_path)
-        direct_uri = 'http://i.imgur.com' + direct_uri_path
-        filename = img['hash'] + img['ext'] # ext includes '.'
+    direct_uri_path = '/' + img['hash'] + img['ext']
+    assert RegExps.imgur_image_uri_path.match(direct_uri_path)
+    direct_uri = 'http://i.imgur.com' + direct_uri_path
+    filename = img['hash'] + img['ext'] # ext includes '.'
 
-        logging.info('Downloading ' + direct_uri)
+    logging.info('Downloading ' + direct_uri)
 
-        conn_i.request('GET', direct_uri_path)
-        resp = conn_i.getresponse()
-        # dump_headers(resp)
-
-        img_bin = resp.read()
-        write_file(filename, img_bin)
-        insert(conn_db, img, direct_uri, filename, resp.getheader('ETag'))
-        time.sleep(1.3)
-
-
-def get_imgur_page_json(conn, r, pageno):
-    path = r + '/page/' + str(pageno) + '.json'
-    assert RegExps.imgur_page_uri_path.match(path)
-
-    logging.info('Fetching ' + path)
-    conn.request('GET', path)
-    resp = conn.getresponse()
+    conn_i.request('GET', direct_uri_path)
+    resp = conn_i.getresponse()
     # dump_headers(resp)
-    if resp.status == 404:
-        raise StopIteration('No more pages to get')
 
-    data = resp.read()
+    img_bin = resp.read()
+    write_file(filename, img_bin)
+    insert(conn_db, img, direct_uri, filename, resp.getheader('ETag'))
+    return 0
+
+
+def handle_page(conn_db, pg):
+    with closing(http.client.HTTPConnection('i.imgur.com')) as conn_i:
+        # http connection allocated here, so it can be reused for many images.
+        for img in pg['gallery']:
+            # print(img['title'], img['permalink'], img['hash'], img['ext'])
+            handle_image(conn_db, conn_i, img)
+
+
+def get_imgur_page_json(r, pageno):
+    with closing(http.client.HTTPConnection('imgur.com')) as conn:
+        path = r + '/page/' + str(pageno) + '.json'
+        assert RegExps.imgur_page_uri_path.match(path)
+
+        logging.info('Fetching ' + path)
+        conn.request('GET', path)
+        resp = conn.getresponse()
+        # dump_headers(resp)
+        if resp.status == 404:
+            raise StopIteration('No more pages to get')
+
+        data = resp.read()
+
     data_s = str(data, encoding='utf8')
     # print(data_s)
     obj = json.loads(data_s)
@@ -194,42 +201,17 @@ def get_imgur_page_json(conn, r, pageno):
     return obj
 
 
-def beep():
-    if sys.platform == 'win32':
-        winsound.Beep(512, 900)
-
-
 def imgur_r(r):
-    conn = http.client.HTTPConnection('imgur.com')
-    # conn.set_debuglevel(10)
-    conn_i = http.client.HTTPConnection('i.imgur.com')
-    conn_db = init_db(r)
-
-    pageno = 0
-    while True:
-        try:
-            pg = get_imgur_page_json(conn, r, pageno)
-            handle_page(conn_i, conn_db, pg)
-            pageno += 1
-        except http.client.BadStatusLine as bsl:
-            logging.exception('Received a bad status line')
-            conn.close()
-            conn_i.close()
-            logging.warning('Closed http connections')
-            # beep()
-            time.sleep(10)
-            logging.info('Reopening http connections')
-            conn = http.client.HTTPConnection('imgur.com')
-            # conn.set_debuglevel(10)
-            conn_i = http.client.HTTPConnection('i.imgur.com')
-            next
-        except StopIteration:
-            break
-
-
-    conn.close()
-    conn_i.close()
-    conn_db.close()
+    with closing(init_db(r)) as conn_db:
+        pageno = 0
+        while True:
+            try:
+                pg = get_imgur_page_json(r, pageno)
+                handle_page(conn_db, pg)
+                pageno += 1
+                time.sleep(1.3)
+            except StopIteration:
+                break
 
 
 if len(sys.argv) == 2:

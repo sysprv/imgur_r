@@ -29,12 +29,4 @@ This means that this script may not download all images that are linked
 from the subreddit.
 
 
-Closed Connections
-
-When fetching metadata, imgur seems to drop the http connection. In this
-case, this script will close http connections to imgur, wait 10 seconds,
-initialise connections once more, and attempt to continue from where it
-left off.
-
-
 # vim:set ts=8 sts=4 sw=4 noet ai tw=72:
