@@ -1,0 +1,40 @@
+This is a simple Python script to download images from imgur.com
+galleries that are related to subreddits.
+
+For example, images uploaded to reddit.com/r/pics/ should also be
+available from imgur.com/r/pics/.
+
+This script uses JSON metadata from imgur, downloading the images and
+storing the metadata in a SQLite3 database.
+
+As it is now, this script is not very user friendly. Image files are
+saved to the current directory with only the imgur hash used as the
+filename. It should be trivial to use the metadata from the SQLite3
+database to create some user-friendly facade.
+
+Error handling in the script is sufficient, but is not air-tight.
+
+This script expects Python 3.2.x.
+
+
+Usage
+
+    python imgur_r.py /r/awww
+
+This will create a SQLite3 database in the current directory, named
+"imgur_r_awww.sqlite3", and will start downloading images.
+
+Note that imgur metadata only contains images going back a few months.
+This means that this script may not download all images that are linked
+from the subreddit.
+
+
+Closed Connections
+
+When fetching metadata, imgur seems to drop the http connection. In this
+case, this script will close http connections to imgur, wait 10 seconds,
+initialise connections once more, and attempt to continue from where it
+left off.
+
+
+# vim:set ts=8 sts=4 sw=4 noet ai tw=72:
