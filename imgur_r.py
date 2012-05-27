@@ -223,9 +223,9 @@ def get_imgur_page_json(r, pageno):
     return obj
 
 
-def imgur_r(r):
+def imgur_r(r, starting_page = 0):
     with closing(init_db(r)) as conn_db:
-        pageno = 0
+        pageno = starting_page
         while True:
             try:
                 pg = get_imgur_page_json(r, pageno)
@@ -238,6 +238,10 @@ def imgur_r(r):
     logging.info('All done')
 
 
-if len(sys.argv) == 2:
+if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
-    imgur_r(sys.argv[1])
+    if len(sys.argv) == 2:
+        imgur_r(sys.argv[1])
+    elif len(sys.argv) == 3:
+        imgur_r(sys.argv[1], int(sys.argv[2]))
+
