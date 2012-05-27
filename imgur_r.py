@@ -196,6 +196,7 @@ def get_imgur_page_json(r, pageno):
     # print(data_s)
     obj = json.loads(data_s)
     if len(obj['gallery']) == 0:
+        logging.info('Found empty gallery page')
         raise StopIteration('Reached empty gallery')
 
     return obj
@@ -212,6 +213,8 @@ def imgur_r(r):
                 time.sleep(1.3)
             except StopIteration:
                 break
+
+    logging.info('All done')
 
 
 if len(sys.argv) == 2:
