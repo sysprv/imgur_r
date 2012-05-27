@@ -171,11 +171,32 @@ def handle_image(conn_db, conn_i, img):
 
 
 def handle_page(conn_db, pg):
-    with closing(http.client.HTTPConnection('i.imgur.com')) as conn_i:
-        # http connection allocated here, so it can be reused for many images.
-        for img in pg['gallery']:
-            # print(img['title'], img['permalink'], img['hash'], img['ext'])
-            handle_image(conn_db, conn_i, img)
+    complete = None
+    for attempt in range(1, 4):
+        # try up to 3 times
+        if attempt > 1:
+            logging.warning('Attempt number ' + attempt)
+            time.sleep(5)
+
+        try:
+            with closing(http.client.HTTPConnection('i.imgur.com')) as conn_i:
+                # http connection allocated here, so it can be reused for many images.
+                for img in pg['gallery']:
+                    # print(img['title'], img['permalink'], img['hash'], img['ext'])
+                    handle_image(conn_db, conn_i, img)
+        except http.client.BadStatusLine as bsl:
+            # server closed connection
+            complete = False
+            logging.exception('Error while downloading images')
+        else:
+            # no error, all images in page downloaded
+            complete = True
+
+        if complete:
+            break
+
+    if not complete:
+        raise IOError('Repeatedly failed to download images')
 
 
 def get_imgur_page_json(r, pageno):
