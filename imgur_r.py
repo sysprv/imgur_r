@@ -190,7 +190,7 @@ def handle_page(conn_db, pg):
     for attempt in range(1, 4):
         # try up to 3 times
         if attempt > 1:
-            logging.warning('Attempt number ' + attempt)
+            logging.warning('Attempt number ' + str(attempt))
             time.sleep(5)
 
         try:
