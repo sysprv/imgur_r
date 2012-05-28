@@ -34,6 +34,7 @@ class RegExps:
     reddit_r_name = re.compile(r'^/r/[A-Za-z0-9_-]+$')
     imgur_image_uri_path = re.compile(r'^/[A-Za-z0-9]+\.(jpg|gif|png)$')
     imgur_page_uri_path = re.compile(r'^/r/[A-Za-z0-9_-]+/page/[0-9]+\.json$')
+    imgur_image_created_time = re.compile(r'^[0-9]+$')
 
 
 def init_db(r):
@@ -98,12 +99,14 @@ def dump_headers(resp):
     sys.stderr.write(m.getvalue())
 
 
-def write_file(filename, data):
+def write_file(filename, data, mtime):
     tmp_filename = filename + '.part'
     if not os.path.exists(filename):
         f = open(tmp_filename, 'wb')
         f.write(data)
         f.close()
+        # logging.info("Setting mtime = " + str(mtime) + ", " + time.asctime(time.gmtime(mtime)))
+        os.utime(tmp_filename, (time.mktime(time.gmtime()), mtime))
         os.rename(tmp_filename, filename)
 
 
@@ -147,6 +150,19 @@ def insert(conn_db, img, complete_uri, final_filename, etag):
     cur.close()
 
 
+def image_time(img):
+    tm = -1
+
+    if img['created']:
+        if RegExps.imgur_image_created_time.match(str(img['created'])):
+            tm = float(img['created'])
+
+    if tm < 0:
+        tm = time.mktime(time.gmtime())
+
+    return tm
+
+
 def handle_image(conn_db, conn_i, img):
     has = already_downloaded(conn_db, img['hash'])
     if has > 0:
@@ -163,9 +179,8 @@ def handle_image(conn_db, conn_i, img):
     conn_i.request('GET', direct_uri_path)
     resp = conn_i.getresponse()
     # dump_headers(resp)
-
     img_bin = resp.read()
-    write_file(filename, img_bin)
+    write_file(filename, img_bin, image_time(img))
     insert(conn_db, img, direct_uri, filename, resp.getheader('ETag'))
     return 0
 
@@ -224,6 +239,11 @@ def get_imgur_page_json(r, pageno):
 
 
 def imgur_r(r, starting_page = 0):
+    # save subreddit name to be read later
+    with closing(open('r', 'w')) as rf:
+        rf.write(r)
+        rf.write('\n')
+
     with closing(init_db(r)) as conn_db:
         pageno = starting_page
         while True:
@@ -238,10 +258,31 @@ def imgur_r(r, starting_page = 0):
     logging.info('All done')
 
 
+def saved_subreddit_name():
+    if os.path.exists('r'):
+        with closing(open('r', 'r')) as rf:
+            r = rf.readline().strip()
+
+        if RegExps.reddit_r_name.match(r):
+            return r
+        else:
+            sys.stderr.write('Bad subreddit name ' + r + '\n')
+            return None
+    else:
+        sys.stderr.write('"r" not found\n')
+        return None
+
+
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 1:
+        # if we've downloaded in this dir before,
+        # and have saved the subreddit name in a file,
+        # use that.
+        r = saved_subreddit_name()
+        if r != None:
+            imgur_r(r)
+    elif len(sys.argv) == 2:
         imgur_r(sys.argv[1])
     elif len(sys.argv) == 3:
         imgur_r(sys.argv[1], int(sys.argv[2]))
-
